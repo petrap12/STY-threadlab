@@ -139,6 +139,44 @@ static void *barber_work(void *arg)
     return NULL;
 }
 
+/* Create an empty, bounded, shared FIFO buffer with nslots */
+voidsbuf_init(sbuf_t*sp, intn)
+{
+    sp->buf= Calloc(n, sizeof(int));
+    sp->n= n; /* Buffer holds max of nitems */
+    sp->front = sp->rear = 0; /* Empty buffer ifffront == rear */
+    Sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
+    Sem_init(&sp->slots, 0, n); /* Initially, bufhas nempty slots */
+    Sem_init(&sp->items, 0, 0); /* Initially, bufhas zero items */
+}
+/* Clean up buffer sp */
+voidsbuf_deinit(sbuf_t*sp)
+{
+    Free(sp->buf);
+}
+
+/* Insert item onto the rear of shared buffer sp */
+voidsbuf_insert(sbuf_t*sp, intitem)
+{
+    P(&sp->slots); /* Wait for available slot */
+    P(&sp->mutex); /* Lock the buffer */
+    sp->buf[(++sp->rear)%(sp->n)] = item; /* Insert the item */
+    V(&sp->mutex); /* Unlock the buffer */
+    V(&sp->items); /* Announce available item */
+}
+
+/* Remove and return the first item from buffer sp */
+intsbuf_remove(sbuf_t*sp)
+{
+    intitem;
+    P(&sp->items); /* Wait for available item */
+    P(&sp->mutex); /* Lock the buffer */
+    item = sp->buf[(++sp->front)%(sp->n)]; /* Remove the item */
+    V(&sp->mutex); /* Unlock the buffer */
+    V(&sp->slots); /* Announce available slot */
+    returnitem;
+}
+
 int main (int argc, char **argv)
 {
     struct simulator simulator;

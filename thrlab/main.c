@@ -12,10 +12,10 @@
  * provide your team information in below.
  *
  * === User information ===
- * User 1: 
- * SSN:
- * User 2:
- * SSN:
+ * User 1: Petra Pétursdóttir
+ * SSN: 1003893399
+ * User 2: Árni Þorvaldsson
+ * SSN: 2708743209
  * === End User Information ===
  ********************************************************/
 
@@ -61,12 +61,6 @@ void sbuf_deinit(sbuf_t *sp);
 void sbuf_insert(sbuf_t *sp, int item);
 int sbuf_remove(sbuf_t *sp);
 
-void Sem_init(sem_t *sem, int pshared, unsigned int value);
-void P(sem_t *sem);
-void V(sem_t *sem);
-void unix_error(char *msg);
-
-
 /**
  * Initialize data structures and create waiting barber threads.
  */
@@ -90,12 +84,12 @@ static void setup(struct simulator *simulator)
     /* Start barber threads */
     struct barber *barber;
     for (unsigned int i = 0; i < thrlab_get_num_barbers(); i++) {
-    barber = calloc(sizeof(struct barber), 1);
-    barber->room = i;
-    barber->simulator = simulator;
-    simulator->barber[i] = barber;
-    pthread_create(&simulator->barberThread[i], 0, barber_work, barber);
-    pthread_detach(simulator->barberThread[i]);
+        barber = calloc(sizeof(struct barber), 1);
+        barber->room = i;
+        barber->simulator = simulator;
+        simulator->barber[i] = barber;
+        pthread_create(&simulator->barberThread[i], 0, barber_work, barber);
+        pthread_detach(simulator->barberThread[i]);
     }
 }
 
@@ -119,6 +113,11 @@ static void customer_arrived(struct customer *customer, void *arg)
 {
     struct simulator *simulator = arg;
     struct chairs *chairs = &simulator->chairs;
+
+    sbuf_t waitingroom;
+
+    // is there an empty chair in the waitingroom or barber chair
+    // if 
 
     sem_init(&customer->mutex, 0, 0);
 
@@ -167,9 +166,9 @@ void sbuf_init(sbuf_t *sp, int n)
     sp->buf = calloc(n, sizeof(int));
     sp->n= n; /* Buffer holds max of nitems */
     sp->front = sp->rear = 0; /* Empty buffer ifffront == rear */
-    Sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
-    Sem_init(&sp->slots, 0, n); /* Initially, bufhas nempty slots */
-    Sem_init(&sp->items, 0, 0); /* Initially, bufhas zero items */
+    sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
+    sem_init(&sp->slots, 0, n); /* Initially, bufhas nempty slots */
+    sem_init(&sp->items, 0, 0); /* Initially, bufhas zero items */
 }
 /* Clean up buffer sp */
 void sbuf_deinit(sbuf_t *sp)
@@ -180,47 +179,23 @@ void sbuf_deinit(sbuf_t *sp)
 /* Insert item onto the rear of shared buffer sp */
 void sbuf_insert(sbuf_t *sp, int item)
 {
-    P(&sp->slots); /* Wait for available slot */
-    P(&sp->mutex); /* Lock the buffer */
+    sem_wait(&sp->slots); /* Wait for available slot */
+    sem_wait(&sp->mutex); /* Lock the buffer */
     sp->buf[(++sp->rear)%(sp->n)] = item; /* Insert the item */
-    V(&sp->mutex); /* Unlock the buffer */
-    V(&sp->items); /* Announce available item */
+    sem_post(&sp->mutex); /* Unlock the buffer */
+    sem_post(&sp->items); /* Announce available item */
 }
 
 /* Remove and return the first item from buffer sp */
 int sbuf_remove(sbuf_t *sp)
 {
     int item;
-    P(&sp->items); /* Wait for available item */
-    P(&sp->mutex); /* Lock the buffer */
+    sem_wait(&sp->items); /* Wait for available item */
+    sem_wait(&sp->mutex); /* Lock the buffer */
     item = sp->buf[(++sp->front)%(sp->n)]; /* Remove the item */
-    V(&sp->mutex); /* Unlock the buffer */
-    V(&sp->slots); /* Announce available slot */
+    sem_post(&sp->mutex); /* Unlock the buffer */
+    sem_post(&sp->slots); /* Announce available slot */
     return item;
-}
-
-void Sem_init(sem_t *sem, int pshared, unsigned int value) 
-{
-    if (sem_init(sem, pshared, value) < 0)
-    unix_error("Sem_init error");
-}
-
-void P(sem_t *sem) 
-{
-    if (sem_wait(sem) < 0)
-    unix_error("P error");
-}
-
-void V(sem_t *sem) 
-{
-    if (sem_post(sem) < 0)
-    unix_error("V error");
-}
-
-void unix_error(char *msg) /* unix-style error */
-{
-    //fprintf(stderr, "%s: %s\n", msg, strerror(errno));
-    exit(0);
 }
 
 int main (int argc, char **argv)

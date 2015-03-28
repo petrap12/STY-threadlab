@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "help.h"
 
+
 /*********************************************************
  * NOTE TO STUDENTS: Before you do anything else, please
  * provide your team information in below.
@@ -44,6 +45,27 @@ struct simulator
     pthread_t *barberThread;
     struct barber **barber;
 };
+
+typedef struct{
+    int *buf; /* Buffer array */
+    int n; /* Maximum number of slots */
+    int front; /* buf[(front+1)%n] is first item */
+    int rear; /* buf[rear%n] is last item */
+    sem_t mutex; /* Protects accesses to buf*/
+    sem_t slots; /* Counts available slots */
+    sem_t items; /* Counts available items */
+} sbuf_t;
+
+void sbuf_init(sbuf_t *sp, int n);
+void sbuf_deinit(sbuf_t *sp);
+void sbuf_insert(sbuf_t *sp, int item);
+int sbuf_remove(sbuf_t *sp);
+
+void Sem_init(sem_t *sem, int pshared, unsigned int value);
+void P(sem_t *sem);
+void V(sem_t *sem);
+void unix_error(char *msg);
+
 
 /**
  * Initialize data structures and create waiting barber threads.
@@ -140,9 +162,9 @@ static void *barber_work(void *arg)
 }
 
 /* Create an empty, bounded, shared FIFO buffer with nslots */
-voidsbuf_init(sbuf_t*sp, intn)
+void sbuf_init(sbuf_t *sp, int n)
 {
-    sp->buf= Calloc(n, sizeof(int));
+    sp->buf = calloc(n, sizeof(int));
     sp->n= n; /* Buffer holds max of nitems */
     sp->front = sp->rear = 0; /* Empty buffer ifffront == rear */
     Sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
@@ -150,13 +172,13 @@ voidsbuf_init(sbuf_t*sp, intn)
     Sem_init(&sp->items, 0, 0); /* Initially, bufhas zero items */
 }
 /* Clean up buffer sp */
-voidsbuf_deinit(sbuf_t*sp)
+void sbuf_deinit(sbuf_t *sp)
 {
-    Free(sp->buf);
+    free(sp->buf);
 }
 
 /* Insert item onto the rear of shared buffer sp */
-voidsbuf_insert(sbuf_t*sp, intitem)
+void sbuf_insert(sbuf_t *sp, int item)
 {
     P(&sp->slots); /* Wait for available slot */
     P(&sp->mutex); /* Lock the buffer */
@@ -166,15 +188,39 @@ voidsbuf_insert(sbuf_t*sp, intitem)
 }
 
 /* Remove and return the first item from buffer sp */
-intsbuf_remove(sbuf_t*sp)
+int sbuf_remove(sbuf_t *sp)
 {
-    intitem;
+    int item;
     P(&sp->items); /* Wait for available item */
     P(&sp->mutex); /* Lock the buffer */
     item = sp->buf[(++sp->front)%(sp->n)]; /* Remove the item */
     V(&sp->mutex); /* Unlock the buffer */
     V(&sp->slots); /* Announce available slot */
-    returnitem;
+    return item;
+}
+
+void Sem_init(sem_t *sem, int pshared, unsigned int value) 
+{
+    if (sem_init(sem, pshared, value) < 0)
+    unix_error("Sem_init error");
+}
+
+void P(sem_t *sem) 
+{
+    if (sem_wait(sem) < 0)
+    unix_error("P error");
+}
+
+void V(sem_t *sem) 
+{
+    if (sem_post(sem) < 0)
+    unix_error("V error");
+}
+
+void unix_error(char *msg) /* unix-style error */
+{
+    //fprintf(stderr, "%s: %s\n", msg, strerror(errno));
+    exit(0);
 }
 
 int main (int argc, char **argv)
